@@ -1,149 +1,135 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Live Tracking - Smart Reformer</title>
-  <!-- Supabase JS v2 UMD -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Chart.js -->
+  <meta charset="UTF-8" />
+  <title>Live Tracking – Smart Reformer</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    header { display: flex; align-items: center; justify-content: space-between; }
-    .controls, .metrics { margin-top: 20px; }
-    .card { display: inline-block; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-right: 10px; }
-    #chartContainer { width: 100%; max-width: 800px; height: 350px; margin-top: 20px; }
+    /* ensure your two charts stack nicely on mobile */
+    #charts { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+    @media(min-width: 640px) {
+      #charts { grid-template-columns: 1fr 1fr; }
+    }
   </style>
 </head>
-<body>
-  <header>
-    <div>
-      <label>Session ID: <input id="sessionInput" placeholder="e.g. Morning Workout 2025-07-24"></label>
-      <label>User ID: <input id="userInput" placeholder="Enter User name or ID"></label>
-    </div>
-    <div>
-      <button id="connectBtn">Connect</button>
-      <button id="disconnectBtn" disabled>Disconnect</button>
-    </div>
-  </header>
+<body class="bg-gray-100 p-6 font-sans">
+  <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-6">
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-6">
+      <div>
+        <label class="text-gray-700 font-semibold">Session:</label>
+        <input id="sessionInput" class="border rounded px-2 py-1 w-48" 
+               placeholder="e.g. Morning Workout 2025‑07‑24" />
+      </div>
+      <button id="connectBtn" class="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600">
+        Connect
+      </button>
+      <button id="disconnectBtn" disabled
+              class="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600 disabled:opacity-50">
+        Disconnect
+      </button>
+    </header>
 
-  <!-- Real-time Metrics -->
-  <div class="metrics">
-    <div class="card">Reps: <span id="liveRep">0</span></div>
-    <div class="card">Speed: <span id="liveSpeed">0</span> cm/s</div>
-    <div class="card">Power: <span id="livePower">0</span> W</div>
-    <div class="card">Range: <span id="liveROM">0</span> cm</div>
-  </div>
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-50 p-4 rounded shadow text-center">
+        <div class="text-xs text-gray-500">Reps</div>
+        <div id="repCount" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="bg-gray-50 p-4 rounded shadow text-center">
+        <div class="text-xs text-gray-500">Speed (cm/s)</div>
+        <div id="speedVal" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="bg-gray-50 p-4 rounded shadow text-center">
+        <div class="text-xs text-gray-500">Power (W)</div>
+        <div id="powerVal" class="text-2xl font-bold">0</div>
+      </div>
+      <div class="bg-gray-50 p-4 rounded shadow text-center">
+        <div class="text-xs text-gray-500">Range (cm)</div>
+        <div id="rangeVal" class="text-2xl font-bold">0</div>
+      </div>
+    </div>
 
-  <!-- Chart Canvas -->
-  <div id="chartContainer">
-    <canvas id="liveChart"></canvas>
+    <!-- Charts -->
+    <div id="charts">
+      <canvas id="posChart" class="bg-white rounded shadow-lg"></canvas>
+      <canvas id="forceChart" class="bg-white rounded shadow-lg"></canvas>
+    </div>
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      // --- Supabase Setup ---
-      const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
-      const SUPABASE_KEY = 'YOUR_ANON_KEY';
-      const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // 1) Replace this URL with your simulator's websocket endpoint
+    const WS_URL = "ws://localhost:3001"; // or your deployed URL
 
-      // --- DOM Elements ---
-      const sessionInput    = document.getElementById('sessionInput');
-      const userInput       = document.getElementById('userInput');
-      const connectBtn      = document.getElementById('connectBtn');
-      const disconnectBtn   = document.getElementById('disconnectBtn');
-      const repDisplay      = document.getElementById('liveRep');
-      const speedDisplay    = document.getElementById('liveSpeed');
-      const powerDisplay    = document.getElementById('livePower');
-      const romDisplay      = document.getElementById('liveROM');
-      const ctx             = document.getElementById('liveChart').getContext('2d');
+    // 2) Grab DOM elements
+    const sessionInput  = document.getElementById("sessionInput");
+    const connectBtn    = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const repCountEl    = document.getElementById("repCount");
+    const speedEl       = document.getElementById("speedVal");
+    const powerEl       = document.getElementById("powerVal");
+    const rangeEl       = document.getElementById("rangeVal");
 
-      // --- Chart Init ---
-      const liveChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [
-            { label: 'Position (cm)', data: [], borderColor: 'blue', yAxisID: 'y', fill: false },
-            { label: 'Force (N)',     data: [], borderColor: 'red',  yAxisID: 'y1', fill: false }
-          ]
-        },
-        options: {
-          animation: false,
-          scales: {
-            y:  { min: 0, max: 100, position: 'left'  },
-            y1: { min: 0, max: 1200, position: 'right' }
-          }
-        }
-      });
+    let socket, sessionId, repCount = 0, lastPos=0, lastTime=0;
 
-      let subscription;
-      let lastTimestamp = null;
-      let lastPos = null;
+    // 3) Setup Charts (fixed scales)
+    const posCtx   = document.getElementById("posChart").getContext("2d");
+    const forceCtx = document.getElementById("forceChart").getContext("2d");
+    const posChart = new Chart(posCtx, {
+      type: "line",
+      data: { labels: [], datasets: [{
+        label: "Position (cm)", data: [], borderColor: "#3b82f6", fill: false
+      }]},
+      options: { animation: false, scales:{ y:{min:0,max:100} }}
+    });
+    const forceChart = new Chart(forceCtx, {
+      type: "line",
+      data: { labels: [], datasets: [{
+        label: "Force (N)", data: [], borderColor: "#ef4444", fill: false
+      }]},
+      options: { animation: false, scales:{ y:{min:0,max:1200} }}
+    });
 
-      // --- Connect Event ---
-      connectBtn.addEventListener('click', async () => {
-        if (!sessionInput.value || !userInput.value) {
-          return alert('Please enter both Session ID and User ID');
-        }
-        connectBtn.disabled = true;
+    // 4) Connect / Disconnect logic
+    connectBtn.addEventListener("click", () => {
+      sessionId = sessionInput.value.trim();
+      if (!sessionId) return alert("Please enter a Session ID");
+      socket = new WebSocket(WS_URL);
+      socket.addEventListener("open", () => {
+        console.log("WS open");
+        connectBtn.disabled    = true;
         disconnectBtn.disabled = false;
-
-        // Clear chart & metrics
-        liveChart.data.labels = [];
-        liveChart.data.datasets.forEach(ds => ds.data = []);
-        liveChart.update();
-        repDisplay.innerText = 0;
-        speedDisplay.innerText = '0';
-        powerDisplay.innerText = '0';
-        romDisplay.innerText = '0';
-        lastTimestamp = null;
-        lastPos       = null;
-
-        // Subscribe to realtime inserts
-        subscription = supabaseClient
-          .channel('realtime')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_data' }, payload => {
-            const row = payload.new;
-            // Only for this session & user
-            if (row.session_id !== sessionInput.value || row.user_id !== userInput.value) return;
-
-            // Update rep count
-            repDisplay.innerText = row.rep_number;
-
-            // Compute speed & power
-            if (lastTimestamp && lastPos !== null) {
-              const dt    = (new Date(row.timestamp) - lastTimestamp) / 1000;
-              const speed = ((row.carriage_pos - lastPos) / dt).toFixed(1);
-              const power = (speed * row.force_n).toFixed(1);
-              speedDisplay.innerText = speed;
-              powerDisplay.innerText = power;
-              romDisplay.innerText   = row.carriage_pos.toFixed(1);
-            }
-            lastTimestamp = new Date(row.timestamp);
-            lastPos       = row.carriage_pos;
-
-            // Update chart
-            liveChart.data.labels.push('');
-            liveChart.data.datasets[0].data.push(row.carriage_pos);
-            liveChart.data.datasets[1].data.push(row.force_n);
-            if (liveChart.data.labels.length > 200) {
-              liveChart.data.labels.shift();
-              liveChart.data.datasets.forEach(ds => ds.data.shift());
-            }
-            liveChart.update();
-          })
-          .subscribe();
       });
-
-      // --- Disconnect Event ---
-      disconnectBtn.addEventListener('click', async () => {
-        if (subscription) {
-          await supabaseClient.removeChannel(subscription);
-        }
-        connectBtn.disabled = false;
-        disconnectBtn.disabled = true;
+      socket.addEventListener("message", ({data}) => {
+        const row = JSON.parse(data);
+        if (row.session_id !== sessionId) return;
+        // Update metrics
+        repCount = row.rep_number; repCountEl.innerText = repCount;
+        speedEl.innerText = ((row.carriage_pos - lastPos)/( (Date.now()-lastTime)/1000 )).toFixed(1);
+        powerEl.innerText = (row.carriage_pos * row.force_n).toFixed(0);
+        rangeEl.innerText = row.carriage_pos.toFixed(1);
+        lastPos  = row.carriage_pos; lastTime = Date.now();
+        // Update charts
+        const t = new Date(row.timestamp).toLocaleTimeString();
+        [posChart, forceChart].forEach((ch,i) => {
+          const val = i===0?row.carriage_pos:row.force_n;
+          ch.data.labels.push(t);
+          ch.data.datasets[0].data.push(val);
+          if (ch.data.labels.length>50) {
+            ch.data.labels.shift(); ch.data.datasets[0].data.shift();
+          }
+          ch.update();
+        });
       });
+    });
+
+    disconnectBtn.addEventListener("click", () => {
+      socket && socket.close();
+      connectBtn.disabled    = false;
+      disconnectBtn.disabled = true;
     });
   </script>
 </body>
