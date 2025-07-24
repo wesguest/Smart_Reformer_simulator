@@ -42,6 +42,10 @@
     <button id="startBtn">Start</button>
     <button id="stopBtn" disabled>Stop</button>
   </div>
+  <div class="control">
+    <strong>Rep Count: <span id="repCount">0</span></strong>
+  </div>
+
   <!-- Chart Container -->
   <div id="chartContainer">
     <canvas id="dataChart"></canvas>
@@ -56,12 +60,13 @@
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     // --- DOM Elements ---
-    const userIdInput   = document.getElementById('userId');
-    const exerciseSelect= document.getElementById('exerciseType');
-    const springSelect  = document.getElementById('springRate');
-    const startBtn      = document.getElementById('startBtn');
-    const stopBtn       = document.getElementById('stopBtn');
-    const ctx           = document.getElementById('dataChart').getContext('2d');
+    const userIdInput    = document.getElementById('userId');
+    const exerciseSelect = document.getElementById('exerciseType');
+    const springSelect   = document.getElementById('springRate');
+    const startBtn       = document.getElementById('startBtn');
+    const stopBtn        = document.getElementById('stopBtn');
+    const repDisplay     = document.getElementById('repCount');
+    const ctx            = document.getElementById('dataChart').getContext('2d');
 
     // --- Simulation Settings ---
     const SAMPLING_INTERVAL = 100; // ms (10 Hz)
@@ -72,132 +77,91 @@
       elephant:    { freq: 0.2, posAmp: 70 },
       short_box:   { freq: 0.6, posAmp: 40 }
     };
-    const SPRING_FACTORS = {
-      light:  0.5,
-      medium: 1,
-      hard:   1.5
-    };
+    const SPRING_FACTORS = { light: 0.5, medium: 1, hard: 1.5 };
 
-    // --- State Variables ---
-    let simInterval = null;
-    let startTime   = null;
-    let sessionId   = null;
-    let repCount    = 0;
-    let lastOutTime = 0;
-    let inThreshold = true;
-
-    // --- Chart Initialization ---
+    // --- Chart Initialization with fixed axes ---
     const chart = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Carriage Position (cm)',
-          data: [],
-          yAxisID: 'y',
-          borderColor: 'blue',
-          fill: false
-        },{
-          label: 'Force (N)',
-          data: [],
-          yAxisID: 'y1',
-          borderColor: 'red',
-          fill: false
-        }]
-      },
+      data: { labels: [], datasets: [
+        { label: 'Position (cm)', data: [], yAxisID: 'y', borderColor: 'blue', fill: false },
+        { label: 'Force (N)',    data: [], yAxisID: 'y1', borderColor: 'red',  fill: false }
+      ]},
       options: {
         animation: false,
         scales: {
-          y:  { type: 'linear', position: 'left'  },
-          y1: { type: 'linear', position: 'right' }
+          x: { display: false },
+          y:  { type: 'linear', position: 'left',  min: 0, max: 100 },
+          y1: { type: 'linear', position: 'right', min: 0, max: 1200 }
         }
       }
     });
 
-    // --- Generate & Send Data Point ---
+    // --- State ---
+    let simInterval, startTime, sessionId;
+    let lastOutTime = 0, inThreshold = true, repCount = 0;
+
+    // --- Simulation Loop ---
     function simulateData() {
       const now = Date.now();
       if (!startTime) startTime = now;
       const t = (now - startTime) / 1000;
-      const exercise = exerciseSelect.value;
-      const spring   = springSelect.value;
-      const { freq, posAmp } = EXERCISE_PROFILES[exercise];
-      const springFactor = SPRING_FACTORS[spring];
+      const { freq, posAmp } = EXERCISE_PROFILES[exerciseSelect.value];
+      const springFactor     = SPRING_FACTORS[springSelect.value];
 
-      // Calculate carriage position (sine + noise)
-      const rawPos      = (Math.sin(2 * Math.PI * freq * t) + 1) / 2;
-      const carriagePos = rawPos * posAmp + (Math.random() - 0.5) * 2;
-
-      // Calculate force (proportional + noise)
-      const force = carriagePos * springFactor * 10 + (Math.random() - 0.5) * 5;
-
-      // Rep detection logic
+      // Compute values
+      const rawPos   = (Math.sin(2 * Math.PI * freq * t) + 1) / 2;
+      const pos      = rawPos * posAmp + (Math.random() - 0.5) * 2;
+      const force    = pos * springFactor * 10 + (Math.random() - 0.5) * 5;
       const threshold = posAmp * 0.1;
-      if (carriagePos > threshold) {
-        if (inThreshold) {
-          inThreshold = false;
-          lastOutTime = now;
-        }
-      } else {
-        if (!inThreshold && (now - lastOutTime) > 1000) {
-          repCount++;
-          inThreshold = true;
-        }
+
+      // Rep logic
+      if (pos > threshold) {
+        if (inThreshold) { inThreshold = false; lastOutTime = now; }
+      } else if (!inThreshold && (now - lastOutTime) > 1000) {
+        repCount++; inThreshold = true;
+        repDisplay.innerText = repCount;
       }
 
-      // Update chart data
+      // Update chart
       chart.data.labels.push('');
-      chart.data.datasets[0].data.push(carriagePos.toFixed(2));
+      chart.data.datasets[0].data.push(pos.toFixed(2));
       chart.data.datasets[1].data.push(force.toFixed(2));
       if (chart.data.labels.length > 100) {
-        chart.data.labels.shift();
-        chart.data.datasets.forEach(ds => ds.data.shift());
+        chart.data.labels.shift(); chart.data.datasets.forEach(ds => ds.data.shift());
       }
       chart.update();
 
-      // Send data to Supabase
+      // Send to Supabase
       sendToDB({
-        timestamp:  new Date().toISOString(),
-        session_id: sessionId,
-        user_id:    userIdInput.value,
-        exercise_type: exercise,
-        spring_setting: spring,
-        carriage_pos: Number(carriagePos.toFixed(2)),
-        force_n:     Number(force.toFixed(2)),
-        rep_number:  repCount
+        timestamp:      new Date().toISOString(),
+        session_id:     sessionId,
+        user_id:        userIdInput.value.trim(),
+        exercise_type:  exerciseSelect.value,
+        spring_setting: springSelect.value,
+        carriage_pos:   Number(pos.toFixed(2)),
+        force_n:        Number(force.toFixed(2)),
+        rep_number:     repCount
       });
     }
 
-    // --- Insert into Database ---
+    // --- Database Insert w/ Logging ---
     async function sendToDB(row) {
-      const { error } = await supabaseClient
-        .from('session_data')
-        .insert([ row ]);
+      const { data, error } = await supabaseClient.from('session_data').insert([row]);
       if (error) console.error('Supabase error:', error.message);
+      else console.log('Inserted row:', data);
     }
 
-    // --- Start / Stop Handlers ---
+    // --- Controls ---
     startBtn.addEventListener('click', () => {
-      console.log('Start clicked');
-      if (!userIdInput.value.trim()) {
-        alert('Please enter a User ID');
-        return;
-      }
-      sessionId   = 'sess-' + Date.now();
-      startTime   = null;
-      repCount    = 0;
-      lastOutTime = 0;
-      inThreshold = true;
-      startBtn.disabled = true;
-      stopBtn.disabled  = false;
+      if (!userIdInput.value.trim()) return alert('Enter User ID');
+      sessionId = 'sess-' + Date.now(); startTime = null; repCount = 0;
+      repDisplay.innerText = 0; inThreshold = true; lastOutTime = 0;
+      startBtn.disabled = true; stopBtn.disabled = false;
       simInterval = setInterval(simulateData, SAMPLING_INTERVAL);
     });
-
     stopBtn.addEventListener('click', () => {
       clearInterval(simInterval);
-      startBtn.disabled = false;
-      stopBtn.disabled  = true;
-      console.log('Stopped simulation');
+      startBtn.disabled = false; stopBtn.disabled = true;
     });
   </script>
 </body>
