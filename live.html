@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Tracking - Smart Reformer</title>
+  <!-- Supabase JS v2 UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    .controls, .metrics { margin-top: 20px; }
+    .card { display: inline-block; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-right: 10px; }
+    #chartContainer { width: 100%; max-width: 800px; height: 350px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <label>Session ID: <input id="sessionInput" placeholder="e.g. Morning Workout 2025-07-24"></label>
+      <label>User ID: <input id="userInput" placeholder="Enter User name or ID"></label>
+    </div>
+    <div>
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+  </header>
+
+  <!-- Real-time Metrics -->
+  <div class="metrics">
+    <div class="card">Reps: <span id="liveRep">0</span></div>
+    <div class="card">Speed: <span id="liveSpeed">0</span> cm/s</div>
+    <div class="card">Power: <span id="livePower">0</span> W</div>
+    <div class="card">Range: <span id="liveROM">0</span> cm</div>
+  </div>
+
+  <!-- Chart Canvas -->
+  <div id="chartContainer">
+    <canvas id="liveChart"></canvas>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // --- Supabase Setup ---
+      const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
+      const SUPABASE_KEY = 'YOUR_ANON_KEY';
+      const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      // --- DOM Elements ---
+      const sessionInput    = document.getElementById('sessionInput');
+      const userInput       = document.getElementById('userInput');
+      const connectBtn      = document.getElementById('connectBtn');
+      const disconnectBtn   = document.getElementById('disconnectBtn');
+      const repDisplay      = document.getElementById('liveRep');
+      const speedDisplay    = document.getElementById('liveSpeed');
+      const powerDisplay    = document.getElementById('livePower');
+      const romDisplay      = document.getElementById('liveROM');
+      const ctx             = document.getElementById('liveChart').getContext('2d');
+
+      // --- Chart Init ---
+      const liveChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Position (cm)', data: [], borderColor: 'blue', yAxisID: 'y', fill: false },
+            { label: 'Force (N)',     data: [], borderColor: 'red',  yAxisID: 'y1', fill: false }
+          ]
+        },
+        options: {
+          animation: false,
+          scales: {
+            y:  { min: 0, max: 100, position: 'left'  },
+            y1: { min: 0, max: 1200, position: 'right' }
+          }
+        }
+      });
+
+      let subscription;
+      let lastTimestamp = null;
+      let lastPos = null;
+
+      // --- Connect Event ---
+      connectBtn.addEventListener('click', async () => {
+        if (!sessionInput.value || !userInput.value) {
+          return alert('Please enter both Session ID and User ID');
+        }
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+
+        // Clear chart & metrics
+        liveChart.data.labels = [];
+        liveChart.data.datasets.forEach(ds => ds.data = []);
+        liveChart.update();
+        repDisplay.innerText = 0;
+        speedDisplay.innerText = '0';
+        powerDisplay.innerText = '0';
+        romDisplay.innerText = '0';
+        lastTimestamp = null;
+        lastPos       = null;
+
+        // Subscribe to realtime inserts
+        subscription = supabaseClient
+          .channel('realtime')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_data' }, payload => {
+            const row = payload.new;
+            // Only for this session & user
+            if (row.session_id !== sessionInput.value || row.user_id !== userInput.value) return;
+
+            // Update rep count
+            repDisplay.innerText = row.rep_number;
+
+            // Compute speed & power
+            if (lastTimestamp && lastPos !== null) {
+              const dt    = (new Date(row.timestamp) - lastTimestamp) / 1000;
+              const speed = ((row.carriage_pos - lastPos) / dt).toFixed(1);
+              const power = (speed * row.force_n).toFixed(1);
+              speedDisplay.innerText = speed;
+              powerDisplay.innerText = power;
+              romDisplay.innerText   = row.carriage_pos.toFixed(1);
+            }
+            lastTimestamp = new Date(row.timestamp);
+            lastPos       = row.carriage_pos;
+
+            // Update chart
+            liveChart.data.labels.push('');
+            liveChart.data.datasets[0].data.push(row.carriage_pos);
+            liveChart.data.datasets[1].data.push(row.force_n);
+            if (liveChart.data.labels.length > 200) {
+              liveChart.data.labels.shift();
+              liveChart.data.datasets.forEach(ds => ds.data.shift());
+            }
+            liveChart.update();
+          })
+          .subscribe();
+      });
+
+      // --- Disconnect Event ---
+      disconnectBtn.addEventListener('click', async () => {
+        if (subscription) {
+          await supabaseClient.removeChannel(subscription);
+        }
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      });
+    });
+  </script>
+</body>
+</html>
