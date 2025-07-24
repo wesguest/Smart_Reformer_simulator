@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Reformer Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #filters { margin-bottom: 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Session Data Analytics</h1>
+
+  <!-- Filter Controls -->
+  <div id="filters">
+    <label>User ID: <input id="filterUser" /></label>
+    <label>Exercise:
+      <select id="filterExercise">
+        <option value="">All</option>
+        <option value="row">Row</option>
+        <option value="lunge">Lunge</option>
+        <option value="tricep_press">Tricep Press</option>
+        <option value="elephant">Elephant</option>
+        <option value="short_box">Short Box</option>
+      </select>
+    </label>
+    <button id="btnLoad">Load Data</button>
+  </div>
+
+  <!-- Data Table -->
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Session</th>
+        <th>User</th>
+        <th>Exercise</th>
+        <th>Spring</th>
+        <th>Pos (cm)</th>
+        <th>Force (N)</th>
+        <th>Rep</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <!-- Chart (optional) -->
+  <canvas id="historyChart" style="margin-top:2rem;" height="200"></canvas>
+
+  <script>
+    // — Supabase setup —
+    const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
+    const SUPABASE_KEY = 'YOUR_ANON_KEY';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const btnLoad       = document.getElementById('btnLoad');
+    const filterUser    = document.getElementById('filterUser');
+    const filterEx      = document.getElementById('filterExercise');
+    const tableBody     = document.querySelector('#dataTable tbody');
+    const ctxChart      = document.getElementById('historyChart').getContext('2d');
+
+    let historyChart;
+
+    btnLoad.addEventListener('click', async () => {
+      // Build filter
+      let query = supabase.from('session_data').select('*');
+      if (filterUser.value)  query = query.eq('user_id', filterUser.value);
+      if (filterEx.value)    query = query.eq('exercise_type', filterEx.value);
+      query = query.order('timestamp', { ascending: true }).limit(500);
+
+      const { data, error } = await query;
+      if (error) return console.error('Load error', error);
+
+      // Fill table
+      tableBody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${new Date(row.timestamp).toLocaleTimeString()}</td>
+          <td>${row.session_id}</td>
+          <td>${row.user_id}</td>
+          <td>${row.exercise_type}</td>
+          <td>${row.spring_setting}</td>
+          <td>${row.carriage_pos}</td>
+          <td>${row.force_n}</td>
+          <td>${row.rep_number}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+
+      // Build chart (e.g., position over time)
+      const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString());
+      const posData = data.map(r => r.carriage_pos);
+      const forceData = data.map(r => r.force_n);
+
+      if (historyChart) historyChart.destroy();
+      historyChart = new Chart(ctxChart, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Pos (cm)',  data: posData,   borderColor: 'blue', fill: false },
+            { label: 'Force (N)', data: forceData, borderColor: 'red',  fill: false }
+          ]
+        },
+        options: { animation: false, scales: { x: { display: true } } }
+      });
+    });
+  </script>
+</body>
+</html>
