@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Smart Reformer Batch Simulator</title>
-  <!-- Supabase JS v2 -->
+  <!-- Supabase JS v2 UMD build -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -21,123 +21,126 @@
   <button id="runBtn">Run Simulation</button>
 
   <script>
-    // --- Supabase Setup ---
-    const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxcWNtY3pzd2J4a2hzYnFxc29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjE0NDksImV4cCI6MjA2ODg5NzQ0OX0.DUjQqT0RpsFrRTGq2iNTEpgP7G7J_dBPcLz4U3BqKiY';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    document.addEventListener('DOMContentLoaded', () => {
+      // --- Supabase Setup ---
+      const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
+      const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxcWNtY3pzd2J4a2hzYnFxc29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjE0NDksImV4cCI6MjA2ODg5NzQ0OX0.DUjQqT0RpsFrRTGq2iNTEpgP7G7J_dBPcLz4U3BqKiY';
+      const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // --- Exercise & Spring Profiles ---
-    const EXERCISES = [
-      { key: 'row', label: 'Row', freq:0.5, amp:60 },
-      { key: 'lunge', label: 'Lunge', freq:0.3, amp:80 },
-      { key: 'tricep_press', label:'Tricep Press', freq:0.4, amp:50 },
-      { key: 'elephant', label:'Elephant', freq:0.2, amp:70 },
-      { key:'short_box', label:'Short Box', freq:0.6, amp:40 }
-    ];
-    const SPRINGS = ['light','medium','hard'];
-    const ABILITY_NOISE = { beginner:2, intermediate:1, pro:0.5 };
+      // --- Exercise & Spring Profiles ---
+      const EXERCISES = [
+        { key: 'row', label: 'Row', freq: 0.5, amp: 60 },
+        { key: 'lunge', label: 'Lunge', freq: 0.3, amp: 80 },
+        { key: 'tricep_press', label: 'Tricep Press', freq: 0.4, amp: 50 },
+        { key: 'elephant', label: 'Elephant', freq: 0.2, amp: 70 },
+        { key: 'short_box', label: 'Short Box', freq: 0.6, amp: 40 }
+      ];
+      const SPRINGS = ['light', 'medium', 'hard'];
+      const ABILITY_NOISE = { beginner: 2, intermediate: 1, pro: 0.5 };
 
-    let userCount = 0;
-    const usersConfigEl = document.getElementById('usersConfig');
-    const addUserBtn = document.getElementById('addUserBtn');
-    const runBtn = document.getElementById('runBtn');
+      // --- DOM Elements ---
+      let userCount = 0;
+      const usersConfigEl = document.getElementById('usersConfig');
+      const addUserBtn = document.getElementById('addUserBtn');
+      const runBtn = document.getElementById('runBtn');
 
-    addUserBtn.onclick = () => {
-      userCount++;
-      const div = document.createElement('div');
-      div.className = 'user-config';
-      div.innerHTML = `
-        <h3>User ${userCount}</h3>
-        <label>User ID: <input type="text" class="user-id" value="user${userCount}"></label>
-        <label>Session Name Prefix: <input type="text" class="session-name" value="Morning Workout"></label>
-        <label>Date: <input type="date" class="session-date" value="${new Date().toISOString().slice(0,10)}"></label>
-        <label>Ability:
-          <select class="ability">
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="pro">Pro</option>
-          </select>
-        </label>
-        <table class="exercise-table">
-          <thead><tr>
-            <th>Include</th><th>Exercise</th><th>Reps</th><th>Spring</th>
-          </tr></thead>
-          <tbody>
-            ${EXERCISES.map(ex => `
-            <tr>
-              <td><input type="checkbox" class="include" checked></td>
-              <td>${ex.label}</td>
-              <td><input type="number" class="reps" value="10" min="1"></td>
-              <td>
-                <select class="spring">
-                  ${SPRINGS.map(sp => `<option value="${sp}">${sp}</option>`).join('')}
-                </select>
-              </td>
-            </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-      usersConfigEl.appendChild(div);
-    };
+      // --- Add User Handler ---
+      addUserBtn.onclick = () => {
+        userCount++;
+        const div = document.createElement('div');
+        div.className = 'user-config';
+        div.innerHTML = `
+          <h3>User ${userCount}</h3>
+          <label>User ID: <input type="text" class="user-id" value="user${userCount}"></label>
+          <label>Session Name Prefix: <input type="text" class="session-name" value="Morning Workout"></label>
+          <label>Date: <input type="date" class="session-date" value="${new Date().toISOString().slice(0, 10)}"></label>
+          <label>Ability:
+            <select class="ability">
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="pro">Pro</option>
+            </select>
+          </label>
+          <table class="exercise-table">
+            <thead><tr>
+              <th>Include</th><th>Exercise</th><th>Reps</th><th>Spring</th>
+            </tr></thead>
+            <tbody>
+              ${EXERCISES.map(ex => `
+              <tr>
+                <td><input type="checkbox" class="include" checked></td>
+                <td>${ex.label}</td>
+                <td><input type="number" class="reps" value="10" min="1"></td>
+                <td>
+                  <select class="spring">
+                    ${SPRINGS.map(sp => `<option value="${sp}">${sp.charAt(0).toUpperCase()+sp.slice(1)}</option>`).join('')}
+                  </select>
+                </td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        usersConfigEl.appendChild(div);
+      };
 
-    runBtn.onclick = async () => {
-      const configs = Array.from(document.querySelectorAll('.user-config')).map(div => {
-        return {
+      // --- Run Simulation Handler ---
+      runBtn.onclick = async () => {
+        const configs = Array.from(document.querySelectorAll('.user-config')).map(div => ({
           userId: div.querySelector('.user-id').value.trim(),
           sessionPrefix: div.querySelector('.session-name').value.trim(),
           date: div.querySelector('.session-date').value,
           ability: div.querySelector('.ability').value,
-          exercises: Array.from(div.querySelectorAll('tbody tr')).map((tr,i) => ({
+          exercises: Array.from(div.querySelectorAll('tbody tr')).map((tr, i) => ({
             key: EXERCISES[i].key,
             freq: EXERCISES[i].freq,
             amp: EXERCISES[i].amp,
             include: tr.querySelector('.include').checked,
-            reps: parseInt(tr.querySelector('.reps').value,10),
+            reps: parseInt(tr.querySelector('.reps').value, 10),
             spring: tr.querySelector('.spring').value
-          })).filter(e=>e.include)
-        };
-      });
+          })).filter(e => e.include)
+        }));
 
-      for (const cfg of configs) {
-        const dateStr = cfg.date;
-        const today = dateStr || new Date().toISOString().slice(0,10);
-        let idx = 1;
-        for (const ex of cfg.exercises) {
-          const sessionId = `${cfg.sessionPrefix} ${idx} ${today}`;
-          await simulateExercise(cfg.userId, sessionId, cfg.ability, ex);
-          idx++;
+        for (const cfg of configs) {
+          const dateStr = cfg.date || new Date().toISOString().slice(0, 10);
+          let idx = 1;
+          for (const ex of cfg.exercises) {
+            const sessionId = `${cfg.sessionPrefix} ${idx} ${dateStr}`;
+            await simulateExercise(cfg.userId, sessionId, cfg.ability, ex);
+            idx++;
+          }
+        }
+        alert('Batch simulation complete');
+      };
+
+      // --- Simulate one exercise set ---
+      async function simulateExercise(userId, sessionId, ability, ex) {
+        const noiseFactor = ABILITY_NOISE[ability];
+        const sampRate = 50; // points per rep
+        for (let r = 1; r <= ex.reps; r++) {
+          for (let i = 0; i < sampRate; i++) {
+            const t = (i / sampRate);
+            const rawPos = (Math.sin(2 * Math.PI * ex.freq * t) + 1) / 2;
+            const pos = rawPos * ex.amp + (Math.random() - 0.5) * 2 * noiseFactor;
+            const springFactor = ex.spring === 'light' ? 0.5 : ex.spring === 'medium' ? 1 : 1.5;
+            const force = pos * springFactor * 10 + (Math.random() - 0.5) * 5 * noiseFactor;
+            await supabaseClient.from('session_data').insert([{ 
+              timestamp: new Date().toISOString(),
+              session_id: sessionId,
+              user_id: userId,
+              exercise_type: ex.key,
+              spring_setting: ex.spring,
+              carriage_pos: Number(pos.toFixed(2)),
+              force_n: Number(force.toFixed(2)),
+              rep_number: r
+            }]);
+          }
         }
       }
-      alert('Batch simulation complete');
-    };
 
-    // --- Simulate one exercise set ---
-    async function simulateExercise(userId, sessionId, ability, ex) {
-      const noiseFactor = ABILITY_NOISE[ability];
-      const sampRate = 50; // points per rep
-      for (let r=1; r<=ex.reps; r++) {
-        for (let i=0; i<sampRate; i++) {
-          const t = (i / sampRate);
-          const rawPos = (Math.sin(2 * Math.PI * ex.freq * t) + 1)/2;
-          const pos = rawPos * ex.amp + (Math.random()-0.5)*2*noiseFactor;
-          const force = pos * (ex.spring==='light'?0.5:ex.spring==='medium'?1:1.5)*10 + (Math.random()-0.5)*5*noiseFactor;
-          await supabase.from('session_data').insert([{ 
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            user_id: userId,
-            exercise_type: ex.key,
-            spring_setting: ex.spring,
-            carriage_pos: Number(pos.toFixed(2)),
-            force_n: Number(force.toFixed(2)),
-            rep_number: r
-          }]);
-        }
-      }
-    }
-
-    // Add initial user
-    addUserBtn.click();
+      // Initialize with one user
+      addUserBtn.click();
+    });
   </script>
 </body>
 </html>
