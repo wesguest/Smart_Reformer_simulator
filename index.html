@@ -2,8 +2,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Smart Reformer Simulator</title>
-  <!-- Supabase JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <!-- Supabase JS v2 UMD build -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -14,6 +14,7 @@
 </head>
 <body>
   <h1>Smart Reformer Simulator</h1>
+  <!-- User Input Controls -->
   <div class="control">
     <label>User ID: <input type="text" id="userId" placeholder="Enter User ID"></label>
   </div>
@@ -41,100 +42,97 @@
     <button id="startBtn">Start</button>
     <button id="stopBtn" disabled>Stop</button>
   </div>
+  <!-- Chart Container -->
   <div id="chartContainer">
     <canvas id="dataChart"></canvas>
   </div>
 
   <script>
-    // --- Config ---
+    // --- Configuration ---
     const SUPABASE_URL = 'https://pqqcmczswbxkhsbqqsop.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxcWNtY3pzd2J4a2hzYnFxc29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjE0NDksImV4cCI6MjA2ODg5NzQ0OX0.DUjQqT0RpsFrRTGq2iNTEpgP7G7J_dBPcLz4U3BqKiY';
 
-    // --- Initialize Supabase client ---
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // --- Initialize Supabase Client ---
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // --- DOM References ---
-    const userIdInput = document.getElementById('userId');
-    const exerciseSelect = document.getElementById('exerciseType');
-    const springSelect = document.getElementById('springRate');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const ctx = document.getElementById('dataChart').getContext('2d');
+    // --- DOM Elements ---
+    const userIdInput   = document.getElementById('userId');
+    const exerciseSelect= document.getElementById('exerciseType');
+    const springSelect  = document.getElementById('springRate');
+    const startBtn      = document.getElementById('startBtn');
+    const stopBtn       = document.getElementById('stopBtn');
+    const ctx           = document.getElementById('dataChart').getContext('2d');
 
-    // --- Simulation Parameters ---
-    const SAMPLING_INTERVAL = 100; // ms (10Hz)
-    const MAX_POSITION = 100; // cm
+    // --- Simulation Settings ---
+    const SAMPLING_INTERVAL = 100; // ms (10 Hz)
     const EXERCISE_PROFILES = {
-      row: { freq: 0.5, posAmp: 60 },
-      lunge: { freq: 0.3, posAmp: 80 },
-      tricep_press: { freq: 0.4, posAmp: 50 },
-      elephant: { freq: 0.2, posAmp: 70 },
-      short_box: { freq: 0.6, posAmp: 40 }
+      row:         { freq: 0.5, posAmp: 60 },
+      lunge:       { freq: 0.3, posAmp: 80 },
+      tricep_press:{ freq: 0.4, posAmp: 50 },
+      elephant:    { freq: 0.2, posAmp: 70 },
+      short_box:   { freq: 0.6, posAmp: 40 }
     };
     const SPRING_FACTORS = {
-      light: 0.5,
+      light:  0.5,
       medium: 1,
-      hard: 1.5
+      hard:   1.5
     };
 
     // --- State Variables ---
     let simInterval = null;
-    let startTime = null;
-    let sessionId = null;
-    let repCount = 0;
+    let startTime   = null;
+    let sessionId   = null;
+    let repCount    = 0;
     let lastOutTime = 0;
     let inThreshold = true;
 
-    // --- Chart Setup ---
+    // --- Chart Initialization ---
     const chart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: [],
-        datasets: [
-          {
-            label: 'Carriage Position (cm)',
-            data: [],
-            yAxisID: 'y',
-            borderColor: 'blue',
-            fill: false
-          },
-          {
-            label: 'Force (N)',
-            data: [],
-            yAxisID: 'y1',
-            borderColor: 'red',
-            fill: false
-          }
-        ]
+        datasets: [{
+          label: 'Carriage Position (cm)',
+          data: [],
+          yAxisID: 'y',
+          borderColor: 'blue',
+          fill: false
+        },{
+          label: 'Force (N)',
+          data: [],
+          yAxisID: 'y1',
+          borderColor: 'red',
+          fill: false
+        }]
       },
       options: {
         animation: false,
         scales: {
-          y: { type: 'linear', position: 'left' },
+          y:  { type: 'linear', position: 'left'  },
           y1: { type: 'linear', position: 'right' }
         }
       }
     });
 
-    // --- Simulation Function ---
+    // --- Generate & Send Data Point ---
     function simulateData() {
       const now = Date.now();
       if (!startTime) startTime = now;
-      const t = (now - startTime) / 1000; // seconds
+      const t = (now - startTime) / 1000;
       const exercise = exerciseSelect.value;
-      const spring = springSelect.value;
-      const profile = EXERCISE_PROFILES[exercise];
+      const spring   = springSelect.value;
+      const { freq, posAmp } = EXERCISE_PROFILES[exercise];
       const springFactor = SPRING_FACTORS[spring];
 
-      // Position: sine wave with noise
-      const rawPos = (Math.sin(2 * Math.PI * profile.freq * t) + 1) / 2;
-      const carriagePos = rawPos * profile.posAmp + (Math.random() - .5) * 2;
+      // Calculate carriage position (sine + noise)
+      const rawPos      = (Math.sin(2 * Math.PI * freq * t) + 1) / 2;
+      const carriagePos = rawPos * posAmp + (Math.random() - 0.5) * 2;
 
-      // Force: proportional to deflection plus noise
-      const force = carriagePos * springFactor * 10 + (Math.random() - .5) * 5;
+      // Calculate force (proportional + noise)
+      const force = carriagePos * springFactor * 10 + (Math.random() - 0.5) * 5;
 
-      // Rep detection
-      const threshold = profile.posAmp * 0.1;
+      // Rep detection logic
+      const threshold = posAmp * 0.1;
       if (carriagePos > threshold) {
         if (inThreshold) {
           inThreshold = false;
@@ -147,7 +145,7 @@
         }
       }
 
-      // Update chart
+      // Update chart data
       chart.data.labels.push('');
       chart.data.datasets[0].data.push(carriagePos.toFixed(2));
       chart.data.datasets[1].data.push(force.toFixed(2));
@@ -157,45 +155,49 @@
       }
       chart.update();
 
-      // Send to Supabase
-      sendToDB({ t: new Date().toISOString(), user: userIdInput.value, ex: exercise, spring, pos: carriagePos, force, rep: repCount });
+      // Send data to Supabase
+      sendToDB({
+        timestamp:  new Date().toISOString(),
+        session_id: sessionId,
+        user_id:    userIdInput.value,
+        exercise_type: exercise,
+        spring_setting: spring,
+        carriage_pos: Number(carriagePos.toFixed(2)),
+        force_n:     Number(force.toFixed(2)),
+        rep_number:  repCount
+      });
     }
 
-    // --- Function to send a data point ---
-    async function sendToDB({ t, user, ex, spring, pos, force, rep }) {
-      const { error } = await supabase.from('session_data').insert([
-        {
-          timestamp: t,
-          session_id: sessionId,
-          user_id: user,
-          exercise_type: ex,
-          spring_setting: spring,
-          carriage_pos: pos,
-          force_n: force,
-          rep_number: rep
-        }
-      ]);
-      if (error) console.error('Supabase error:', error);
+    // --- Insert into Database ---
+    async function sendToDB(row) {
+      const { error } = await supabaseClient
+        .from('session_data')
+        .insert([ row ]);
+      if (error) console.error('Supabase error:', error.message);
     }
 
-    // --- Start Simulation ---
+    // --- Start / Stop Handlers ---
     startBtn.addEventListener('click', () => {
-      if (!userIdInput.value) return alert('Please enter a User ID');
-      sessionId = 'sess-' + Date.now();
-      startTime = null;
-      repCount = 0;
+      console.log('Start clicked');
+      if (!userIdInput.value.trim()) {
+        alert('Please enter a User ID');
+        return;
+      }
+      sessionId   = 'sess-' + Date.now();
+      startTime   = null;
+      repCount    = 0;
       lastOutTime = 0;
       inThreshold = true;
       startBtn.disabled = true;
-      stopBtn.disabled = false;
+      stopBtn.disabled  = false;
       simInterval = setInterval(simulateData, SAMPLING_INTERVAL);
     });
 
-    // --- Stop Simulation ---
     stopBtn.addEventListener('click', () => {
       clearInterval(simInterval);
       startBtn.disabled = false;
-      stopBtn.disabled = true;
+      stopBtn.disabled  = true;
+      console.log('Stopped simulation');
     });
   </script>
 </body>
